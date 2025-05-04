@@ -7,11 +7,90 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from bs4 import BeautifulSoup
 import time
 
+
+DUMPS_ROOT_FOLDER = "marmoset_dump" # CONFIG
+
 TARGET_MARMOSET_COURSE_PAGE = "https://marmoset.student.cs.uwaterloo.ca/marmoset-w23-f23/"
+
+def scrape_project_submissions(driver, course_folder, project_name, submission_link):
+    driver.get(f"https://marmoset.student.cs.uwaterloo.ca{submission_link}")
+    html_content = driver.page_source
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Create folder for project submissions
+    project_folder = os.path.join(course_folder, project_name)
+    os.makedirs(project_folder, exist_ok=True)
+
+    # Create CSV filename
+    csv_file = os.path.join(project_folder, f"{project_name}_submissions.csv")
+
+    # Find the submissions table
+    submissions_table = soup.find('table')
+    if submissions_table:
+        # Check if CSV already exists
+        if not os.path.exists(csv_file):
+            # Open CSV file to write submission data
+            with open(csv_file, 'w') as f:
+                f.write("submission_id,submission_date,test_score\n")
+                
+                for row in submissions_table.find_all('tr')[1:]:  # Skip header row
+                    cells = row.find_all('td')
+                    if cells:
+                        submission_id = cells[0].text.strip()  # First column is submission #
+                        submission_date = cells[1].text.strip().replace(",", " ")  # Second column is date
+                        test_score = cells[2].text.strip()  # Third column is test score
+
+                        # Write to CSV
+                        f.write(f"{submission_id},{submission_date},{test_score}\n")
+
+        # Process downloads
+        for row in submissions_table.find_all('tr')[1:]:  # Skip header row
+            cells = row.find_all('td')
+            if cells:
+                submission_id = cells[0].text.strip()  # First column is submission #
+                submission_date = cells[1].text.strip()  # Second column is date
+                test_score = cells[2].text.strip()  # Third column is test score
+
+                print(f"Scraping submission {submission_id} from {submission_date} with score {test_score}")
+                
+                # Find download link in last column
+                download_link = cells[-1].find('a')['href']
+                full_download_link = f"https://marmoset.student.cs.uwaterloo.ca{download_link}"
+
+                file_name = f"{project_name}_submission_{submission_id}.zip"
+                downloaded_file = os.path.join(os.path.join(DUMPS_ROOT_FOLDER, "downloads"), f"{project_name}.zip")
+                target_file = os.path.join(project_folder, file_name)
+
+                # Check if the file already exists
+                if os.path.exists(target_file):
+                    print(f"Skipping {target_file} because it already exists")
+                    continue
+                
+                # Download the submission
+                driver.get(full_download_link)
+                time.sleep(1)  # Wait for download to start
+                
+                print(f"Downloaded submission {submission_id} from {submission_date} with score {test_score}")
+                
+                # Wait for file to exist
+                while not os.path.exists(downloaded_file):
+                    print(f"Waiting for {downloaded_file} to exist")
+                    time.sleep(0.5)
+                    
+                # Move file from downloads to target folder
+                print(f"Moving {downloaded_file} to {target_file}")
+                os.rename(downloaded_file, target_file)
+                time.sleep(0.2)
+                
 
 def parse_course_page(driver):
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
+
+    course_name = soup.find('h1').find('a').text.strip()
+    course_folder = os.path.join(DUMPS_ROOT_FOLDER, course_name)
+    os.makedirs(course_folder, exist_ok=True)
+
     assessment_table = soup.find('table')
     if assessment_table:
         assessment_links = []
@@ -21,6 +100,8 @@ def parse_course_page(driver):
                 project_name = cells[0].find('a').text.strip()
                 submission_link = cells[1].find('a')['href']
                 assessment_links.append((project_name, submission_link))
+                course_folder = os.path.join(DUMPS_ROOT_FOLDER, course_name)
+                scrape_project_submissions(driver, course_folder, project_name, submission_link)
         return assessment_links
 
 def parse_course_list_page(driver):
@@ -81,7 +162,6 @@ def get_marmoset_page_type(html_content):
         return "unknown"
 
 if __name__ == "__main__":
-    dumps_root_folder = "marmoset_dump" # CONFIG
     
     # Update these paths to match your actual Chrome profile location
     # Also make sure that the Chrome profile already is logged into a Marmoset session
@@ -98,7 +178,7 @@ if __name__ == "__main__":
     chrome_options.add_argument("--kiosk-printing")  # Enables silent printing
     chrome_prefs = {
         "printing.print_preview_sticky_settings.appState": '{"recentDestinations":[{"id":"Save as PDF","origin":"local"}],"selectedDestinationId":"Save as PDF","version":2}',
-        "savefile.default_directory": os.path.abspath(dumps_root_folder)
+        "download.default_directory": os.path.join(os.path.abspath(DUMPS_ROOT_FOLDER), "downloads")
     }
     chrome_options.add_experimental_option("prefs", chrome_prefs)
     service = Service('/usr/bin/chromedriver')
@@ -106,8 +186,10 @@ if __name__ == "__main__":
 
     try:
         # Create Course Folder
-        # course_folder = os.path.join(dumps_root_folder, TARGET_COURSE_NAME)
-        # os.makedirs(course_folder, exist_ok=True)
+        root_dump_folder = os.path.abspath(DUMPS_ROOT_FOLDER)
+        downloads_folder = os.path.join(root_dump_folder, "downloads")
+        os.makedirs(root_dump_folder, exist_ok=True)
+        os.makedirs(downloads_folder, exist_ok=True)
 
         # Get Target Marmoset Course Page
         driver.get(TARGET_MARMOSET_COURSE_PAGE)
