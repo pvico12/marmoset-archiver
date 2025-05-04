@@ -12,7 +12,7 @@ DUMPS_ROOT_FOLDER = "marmoset_dump" # CONFIG
 
 TARGET_MARMOSET_COURSE_PAGE = "https://marmoset.student.cs.uwaterloo.ca/marmoset-w23-f23/"
 
-def scrape_project_submissions(driver, course_folder, project_name, submission_link):
+def archive_project_submissions(driver, course_folder, project_name, submission_link):
     driver.get(f"https://marmoset.student.cs.uwaterloo.ca{submission_link}")
     html_content = driver.page_source
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -101,7 +101,7 @@ def parse_course_page(driver):
                 submission_link = cells[1].find('a')['href']
                 assessment_links.append((project_name, submission_link))
                 course_folder = os.path.join(DUMPS_ROOT_FOLDER, course_name)
-                scrape_project_submissions(driver, course_folder, project_name, submission_link)
+                archive_project_submissions(driver, course_folder, project_name, submission_link)
         return assessment_links
 
 def parse_course_list_page(driver):
