@@ -10,7 +10,7 @@ import time
 
 DUMPS_ROOT_FOLDER = "marmoset_dump" # CONFIG
 
-TARGET_MARMOSET_COURSE_PAGE = "https://marmoset.student.cs.uwaterloo.ca/marmoset-w23-f23/"
+TARGET_MARMOSET_COURSE_PAGE = "https://marmoset.student.cs.uwaterloo.ca/"
 
 def archive_project_submissions(driver, course_folder, project_name, submission_link):
     driver.get(f"https://marmoset.student.cs.uwaterloo.ca{submission_link}")
@@ -52,6 +52,34 @@ def archive_project_submissions(driver, course_folder, project_name, submission_
                 test_score = cells[2].text.strip()  # Third column is test score
 
                 print(f"Scraping submission {submission_id} from {submission_date} with score {test_score}")
+
+                # DETAILED SUBMISSION INFO
+                # Create detailed test results folder
+                detailed_test_results_folder = os.path.join(project_folder, f"detailed_test_results")
+                os.makedirs(detailed_test_results_folder, exist_ok=True)
+
+                if not os.path.exists(os.path.join(detailed_test_results_folder, f"{submission_id}.html")):
+                    # Archive detailed test results
+                    detailed_test_results_endpoint = cells[3].find('a')
+                    # for some classes, the detailed test results endpoint is the 2nd last column
+                    if not detailed_test_results_endpoint:
+                        detailed_test_results_endpoint = cells[-2].find('a')['href']
+                        if not detailed_test_results_endpoint:
+                            print(f"No detailed test results endpoint found for submission {submission_id}")
+                            continue
+                    else:
+                        detailed_test_results_endpoint = detailed_test_results_endpoint['href']
+                    detailed_test_results_full_url = f"https://marmoset.student.cs.uwaterloo.ca{detailed_test_results_endpoint}"
+                    driver.get(detailed_test_results_full_url)
+                    detailed_test_results_html = driver.page_source
+                    detailed_test_results_soup = BeautifulSoup(detailed_test_results_html, 'html.parser')
+
+                    # Save HTML
+                    with open(os.path.join(detailed_test_results_folder, f"submission_{submission_id}.html"), 'w') as f:
+                        f.write(detailed_test_results_html)
+                
+
+                # DOWNLOAD SUBMISSION
                 
                 # Find download link in last column
                 download_link = cells[-1].find('a')['href']
@@ -164,7 +192,7 @@ def get_marmoset_page_type(html_content):
 if __name__ == "__main__":
     
     # Update these paths to match your actual Chrome profile location
-    # Also make sure that the Chrome profile already is logged into a Marmoset session
+    # Also make sure that the Chrome profile has UW password saved for easy ADFS click-through sequence
     user_data_dir = "/home/user/.config/google-chrome" # CONFIG
     profile_directory = "Default" # CONFIG
     
